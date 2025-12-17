@@ -41,7 +41,7 @@ jobs:
       
       - name: Install and test
         run: |
-          pip install dist/*.whl
+          pip install secval --no-index --find-links dist/
           python -c "from secval import StringSanitizer, EmailValidator, PasswordValidator; print('Import OK')"
       
       - name: Upload wheels
