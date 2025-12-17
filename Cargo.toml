@@ -14,7 +14,7 @@ name = "secval"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.22", features = ["extension-module"] }
+pyo3 = { version = "0.23", features = ["extension-module"] }
 regex = "1.10"
 lazy_static = "1.4"
 html-escape = "0.2"
