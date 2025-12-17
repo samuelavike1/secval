@@ -1,0 +1,20 @@
+[package]
+name = "secval"
+version = "0.1.0"
+edition = "2021"
+authors = ["Samuel Avike"]
+description = "A high-performance, security-focused Python validation library written in Rust"
+license = "MIT"
+repository = "https://github.com/samuelavike1/secval"
+keywords = ["validation", "security", "python", "pyo3"]
+categories = ["development-tools", "web-programming"]
+
+[lib]
+name = "secval"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.22", features = ["extension-module"] }
+regex = "1.10"
+lazy_static = "1.4"
+html-escape = "0.2"

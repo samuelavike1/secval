@@ -1,7 +1,48 @@
+[build-system]
+requires = ["maturin>=1.4,<2.0"]
+build-backend = "maturin"
+
 [project]
-name = "secure-validator"
+name = "secval"
 version = "0.1.0"
-description = "Add your description here"
+description = "A high-performance, security-focused Python validation library written in Rust"
 readme = "README.md"
-requires-python = ">=3.13"
-dependencies = []
+license = { text = "MIT" }
+authors = [
+    { name = "Samuel Avike", email = "samuelavike1@gmail.com" }
+]
+keywords = ["validation", "security", "sanitization", "pydantic-alternative", "rust"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Security",
+    "Typing :: Typed",
+]
+requires-python = ">=3.8"
+
+[project.urls]
+Homepage = "https://github.com/samuelavike1/secval"
+Repository = "https://github.com/samuelavike1/secval"
+Documentation = "https://github.com/samuelavike1/secval#readme"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-benchmark>=4.0",
+    "maturin>=1.4",
+]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+python-source = "python"
+module-name = "secval._secval"
