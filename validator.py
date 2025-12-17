@@ -1,6 +1,7 @@
 import re
-from typing import Any, Dict, List, Optional, Type, get_origin, get_args, Union
+from typing import Any, Dict, List, Optional, Type, get_origin, get_args, Union, Callable, Pattern
 from html import escape
+from enum import Enum
 
 
 class ValidationError(Exception):
@@ -224,6 +225,139 @@ class EmailValidator:
             return False
 
 
+class PasswordValidator:
+    """Handles password strength validation"""
+
+    # Common weak passwords to reject
+    COMMON_PASSWORDS = {
+        'password', '123456', '12345678', 'qwerty', 'abc123', 'monkey', 'master',
+        '111111', '2000', 'jordan', 'superman', 'harley', 'password1', 'password123',
+        'letmein', 'welcome', 'admin', 'login', 'princess', 'admin123', 'root',
+        'toor', 'pass', 'test', 'guest', 'passw0rd', 'p@ssw0rd', 'p@ssword',
+    }
+
+    # Strength level requirements
+    STRENGTH_REQUIREMENTS = {
+        'weak': {
+            'min_length': 6,
+            'require_uppercase': False,
+            'require_lowercase': False,
+            'require_digit': False,
+            'require_special': False,
+            'check_common': False,
+        },
+        'medium': {
+            'min_length': 8,
+            'require_uppercase': True,
+            'require_lowercase': True,
+            'require_digit': True,
+            'require_special': False,
+            'check_common': True,
+        },
+        'strong': {
+            'min_length': 12,
+            'require_uppercase': True,
+            'require_lowercase': True,
+            'require_digit': True,
+            'require_special': True,
+            'check_common': True,
+        },
+    }
+
+    UPPERCASE_PATTERN = re.compile(r'[A-Z]')
+    LOWERCASE_PATTERN = re.compile(r'[a-z]')
+    DIGIT_PATTERN = re.compile(r'\d')
+    SPECIAL_PATTERN = re.compile(r'[!@#$%^&*()_+\-=\[\]{}|;:\'",.<>?/\\`~]')
+
+    @classmethod
+    def validate(
+            cls,
+            password: str,
+            min_strength: str = 'medium',
+            max_length: int = 128,
+            custom_blacklist: Optional[set] = None
+    ) -> str:
+        """
+        Validate password strength
+
+        Args:
+            password: Password to validate
+            min_strength: Minimum strength level ('weak', 'medium', 'strong')
+            max_length: Maximum password length
+            custom_blacklist: Additional passwords to reject
+
+        Returns:
+            The validated password
+
+        Raises:
+            ValueError: If password doesn't meet requirements
+        """
+        if not isinstance(password, str):
+            raise ValueError("Password must be a string")
+
+        if min_strength not in cls.STRENGTH_REQUIREMENTS:
+            raise ValueError(f"Invalid strength level. Must be one of: {list(cls.STRENGTH_REQUIREMENTS.keys())}")
+
+        requirements = cls.STRENGTH_REQUIREMENTS[min_strength]
+
+        # Check length
+        if len(password) < requirements['min_length']:
+            raise ValueError(f"Password must be at least {requirements['min_length']} characters long")
+
+        if len(password) > max_length:
+            raise ValueError(f"Password must be at most {max_length} characters long")
+
+        # Check for uppercase
+        if requirements['require_uppercase'] and not cls.UPPERCASE_PATTERN.search(password):
+            raise ValueError("Password must contain at least one uppercase letter")
+
+        # Check for lowercase
+        if requirements['require_lowercase'] and not cls.LOWERCASE_PATTERN.search(password):
+            raise ValueError("Password must contain at least one lowercase letter")
+
+        # Check for digit
+        if requirements['require_digit'] and not cls.DIGIT_PATTERN.search(password):
+            raise ValueError("Password must contain at least one digit")
+
+        # Check for special character
+        if requirements['require_special'] and not cls.SPECIAL_PATTERN.search(password):
+            raise ValueError("Password must contain at least one special character")
+
+        # Check against common passwords
+        if requirements['check_common']:
+            password_lower = password.lower()
+            if password_lower in cls.COMMON_PASSWORDS:
+                raise ValueError("Password is too common. Please choose a stronger password")
+
+            # Check custom blacklist
+            if custom_blacklist and password_lower in {p.lower() for p in custom_blacklist}:
+                raise ValueError("Password is not allowed")
+
+        return password
+
+    @classmethod
+    def is_valid(cls, password: str, min_strength: str = 'medium') -> bool:
+        """Check if a password is valid without raising an exception"""
+        try:
+            cls.validate(password, min_strength=min_strength)
+            return True
+        except ValueError:
+            return False
+
+    @classmethod
+    def get_strength(cls, password: str) -> str:
+        """
+        Determine the strength level of a password
+
+        Returns:
+            'strong', 'medium', 'weak', or 'invalid'
+        """
+        for strength in ['strong', 'medium', 'weak']:
+            if cls.is_valid(password, min_strength=strength):
+                return strength
+        return 'invalid'
+
+
 class Field:
     """Field descriptor for validation rules"""
 
@@ -239,6 +373,19 @@ class Field:
             max_length: Optional[int] = None,
             email: bool = False,
             allow_disposable_email: bool = True,
+            # New: Pattern (regex) validation
+            pattern: Optional[Union[str, Pattern]] = None,
+            pattern_message: Optional[str] = None,  # Custom error message for pattern
+            # New: Password validation
+            password: bool = False,
+            password_strength: str = 'medium',  # 'weak', 'medium', 'strong'
+            password_blacklist: Optional[set] = None,
+            # New: Choices/Enum validation
+            choices: Optional[List[Any]] = None,
+            enum: Optional[Type[Enum]] = None,
+            # New: Default values
+            default: Any = ...,  # Ellipsis means no default
+            default_factory: Optional[Callable[[], Any]] = None,
     ):
         self.field_type = field_type
         self.required = required
@@ -250,6 +397,42 @@ class Field:
         self.max_length = max_length  # Maximum string length
         self.email = email  # Whether to validate as email
         self.allow_disposable_email = allow_disposable_email  # Allow disposable emails
+
+        # Pattern validation
+        if pattern is not None:
+            self.pattern = re.compile(pattern) if isinstance(pattern, str) else pattern
+        else:
+            self.pattern = None
+        self.pattern_message = pattern_message or "Value does not match required pattern"
+
+        # Password validation
+        self.password = password
+        self.password_strength = password_strength
+        self.password_blacklist = password_blacklist
+
+        # Choices/Enum validation
+        self.choices = choices
+        self.enum = enum
+
+        # Default values
+        self.default = default
+        self.default_factory = default_factory
+
+        # Validation: can't have both default and default_factory
+        if default is not ... and default_factory is not None:
+            raise ValueError("Cannot specify both 'default' and 'default_factory'")
+
+    def has_default(self) -> bool:
+        """Check if field has a default value"""
+        return self.default is not ... or self.default_factory is not None
+
+    def get_default(self) -> Any:
+        """Get the default value for this field"""
+        if self.default_factory is not None:
+            return self.default_factory()
+        if self.default is not ...:
+            return self.default
+        raise ValueError("No default value available")
 
 
 class ValidatorMeta(type):
@@ -292,9 +475,14 @@ class BaseValidator(metaclass=ValidatorMeta):
         for field_name, field_def in self._fields.items():
             value = data.get(field_name)
 
-            # Check required fields
+            # Handle missing values with defaults
             if value is None:
-                if field_def.required:
+                if field_def.has_default():
+                    # Use default value
+                    default_value = field_def.get_default()
+                    self._data[field_name] = default_value
+                    continue
+                elif field_def.required:
                     errors.append({
                         "loc": ("body", field_name),
                         "type": "missing",
@@ -317,8 +505,25 @@ class BaseValidator(metaclass=ValidatorMeta):
 
             # String-specific validations
             if isinstance(validated_value, str):
+                # Password validation (do this early, before other string checks)
+                if field_def.password:
+                    try:
+                        validated_value = PasswordValidator.validate(
+                            validated_value,
+                            min_strength=field_def.password_strength,
+                            max_length=field_def.max_length or 128,
+                            custom_blacklist=field_def.password_blacklist
+                        )
+                    except ValueError as e:
+                        errors.append({
+                            "loc": ("body", field_name),
+                            "type": "value_error",
+                            "msg": str(e),
+                        })
+                        continue
+
                 # Email validation
-                if field_def.email:
+                elif field_def.email:
                     try:
                         validated_value = EmailValidator.validate(
                             validated_value,
@@ -333,15 +538,25 @@ class BaseValidator(metaclass=ValidatorMeta):
                         })
                         continue
 
-                # Length validation (skip if email validation already checked)
-                if not field_def.email and field_def.max_length is not None and len(
-                        validated_value) > field_def.max_length:
-                    errors.append({
-                        "loc": ("body", field_name),
-                        "type": "value_error",
-                        "msg": f"String length must be at most {field_def.max_length}",
-                    })
-                    continue
+                # Pattern (regex) validation
+                if field_def.pattern is not None:
+                    if not field_def.pattern.match(validated_value):
+                        errors.append({
+                            "loc": ("body", field_name),
+                            "type": "value_error",
+                            "msg": field_def.pattern_message,
+                        })
+                        continue
+
+                # Length validation (skip if email/password validation already checked)
+                if not field_def.email and not field_def.password:
+                    if field_def.max_length is not None and len(validated_value) > field_def.max_length:
+                        errors.append({
+                            "loc": ("body", field_name),
+                            "type": "value_error",
+                            "msg": f"String length must be at most {field_def.max_length}",
+                        })
+                        continue
 
                 # No empty string validation
                 if field_def.no_empty and not validated_value.strip():
@@ -351,6 +566,36 @@ class BaseValidator(metaclass=ValidatorMeta):
                         "msg": "String cannot be empty",
                     })
                     continue
+
+            # Choices validation
+            if field_def.choices is not None:
+                if validated_value not in field_def.choices:
+                    choices_str = ', '.join(repr(c) for c in field_def.choices)
+                    errors.append({
+                        "loc": ("body", field_name),
+                        "type": "value_error",
+                        "msg": f"Value must be one of: {choices_str}",
+                    })
+                    continue
+
+            # Enum validation
+            if field_def.enum is not None:
+                try:
+                    # Try to get enum member by value
+                    validated_value = field_def.enum(validated_value)
+                except ValueError:
+                    # Try to get enum member by name
+                    try:
+                        validated_value = field_def.enum[validated_value]
+                    except KeyError:
+                        valid_values = [e.value for e in field_def.enum]
+                        valid_names = [e.name for e in field_def.enum]
+                        errors.append({
+                            "loc": ("body", field_name),
+                            "type": "value_error",
+                            "msg": f"Invalid enum value. Valid values: {valid_values}, Valid names: {valid_names}",
+                        })
+                        continue
 
             # Numeric range validation
             if isinstance(validated_value, (int, float)):
@@ -430,8 +675,8 @@ class BaseValidator(metaclass=ValidatorMeta):
             if not isinstance(value, str):
                 raise ValueError(f"Expected string, got {type(value).__name__}")
 
-            # Apply sanitization if enabled (but not for email fields - emails are validated separately)
-            if field_def and field_def.sanitize and not field_def.email:
+            # Apply sanitization if enabled (but not for email/password fields - they're validated separately)
+            if field_def and field_def.sanitize and not field_def.email and not field_def.password:
                 value = StringSanitizer.sanitize(value, strict=field_def.strict_sanitize)
 
             return value
@@ -455,11 +700,51 @@ class BaseValidator(metaclass=ValidatorMeta):
                 raise ValueError(f"Expected boolean, got {type(value).__name__}")
             return value
 
+        # Handle nested validators (classes that inherit from BaseValidator)
+        elif isinstance(expected_type, type) and issubclass(expected_type, BaseValidator):
+            if not isinstance(value, dict):
+                raise ValueError(f"Expected object/dict for nested validator, got {type(value).__name__}")
+            try:
+                # Create instance of nested validator, which will validate the data
+                nested_instance = expected_type(**value)
+                return nested_instance
+            except ValidationError as e:
+                # Re-raise with updated field paths
+                nested_errors = []
+                for error in e.errors():
+                    loc = error.get("loc", ())
+                    # Prepend current field name to the location
+                    if len(loc) >= 2:
+                        new_loc = (loc[0], f"{field_name}.{loc[1]}")
+                    else:
+                        new_loc = ("body", field_name)
+                    nested_errors.append({
+                        **error,
+                        "loc": new_loc
+                    })
+                raise ValidationError(nested_errors)
+
         return value
 
     def dict(self) -> Dict[str, Any]:
         """Return validated data as dictionary"""
-        return self._data.copy()
+        result = {}
+        for key, value in self._data.items():
+            if isinstance(value, BaseValidator):
+                # Recursively convert nested validators to dicts
+                result[key] = value.dict()
+            elif isinstance(value, list):
+                # Handle lists that may contain validators
+                result[key] = [
+                    item.dict() if isinstance(item, BaseValidator) else item
+                    for item in value
+                ]
+            elif isinstance(value, Enum):
+                # Convert enum to its value
+                result[key] = value.value
+            else:
+                result[key] = value
+        return result
 
     def __getattr__(self, name: str) -> Any:
         """Allow attribute access to validated fields"""
