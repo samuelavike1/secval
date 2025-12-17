@@ -173,6 +173,15 @@ class BaseValidator(metaclass=ValidatorMeta):
             if value is None:
                 if field_def.has_default():
                     default_value = field_def.get_default()
+                    # Apply enum conversion to default values too
+                    if field_def.enum is not None:
+                        try:
+                            default_value = field_def.enum(default_value)
+                        except ValueError:
+                            try:
+                                default_value = field_def.enum[default_value]
+                            except KeyError:
+                                pass  # Keep original default if conversion fails
                     self._data[field_name] = default_value
                     continue
                 elif field_def.required:
