@@ -1,12 +1,10 @@
 //! SecVal - A high-performance, security-focused validation library
 //! 
-//! This module provides Rust-powered validation for Python applications,
-//! offering XSS prevention, SQL injection protection, email validation,
-//! password strength checking, and more.
+//! This module provides Rust-powered validation for Python applications.
 
 use pyo3::prelude::*;
-use pyo3::exceptions::{PyValueError, PyTypeError};
-use pyo3::types::{PyDict, PyList, PyString, PyBool, PyFloat, PyInt};
+use pyo3::exceptions::PyValueError;
+use pyo3::types::PyList;
 use regex::Regex;
 use lazy_static::lazy_static;
 use std::collections::HashSet;
@@ -90,17 +88,6 @@ pub struct StringSanitizer;
 #[pymethods]
 impl StringSanitizer {
     /// Sanitize a string to prevent injection attacks
-    /// 
-    /// Args:
-    ///     value: String to sanitize
-    ///     strict: If True, reject strings with malicious patterns.
-    ///            If False, attempt to clean them.
-    /// 
-    /// Returns:
-    ///     Sanitized string
-    /// 
-    /// Raises:
-    ///     ValueError: If strict=True and malicious content detected
     #[staticmethod]
     #[pyo3(signature = (value, strict=true))]
     fn sanitize(value: &str, strict: bool) -> PyResult<String> {
@@ -187,17 +174,6 @@ pub struct EmailValidator;
 #[pymethods]
 impl EmailValidator {
     /// Validate an email address
-    /// 
-    /// Args:
-    ///     email: Email address to validate
-    ///     allow_disposable: Whether to allow disposable email addresses
-    ///     max_length: Maximum email length (RFC 5321 limit is 254)
-    /// 
-    /// Returns:
-    ///     Normalized email address (lowercase)
-    /// 
-    /// Raises:
-    ///     ValueError: If email is invalid
     #[staticmethod]
     #[pyo3(signature = (email, allow_disposable=true, max_length=254))]
     fn validate(email: &str, allow_disposable: bool, max_length: usize) -> PyResult<String> {
@@ -297,18 +273,6 @@ pub struct PasswordValidator;
 #[pymethods]
 impl PasswordValidator {
     /// Validate password strength
-    /// 
-    /// Args:
-    ///     password: Password to validate
-    ///     min_strength: Minimum strength level ('weak', 'medium', 'strong')
-    ///     max_length: Maximum password length
-    ///     custom_blacklist: Additional passwords to reject (optional)
-    /// 
-    /// Returns:
-    ///     The validated password
-    /// 
-    /// Raises:
-    ///     ValueError: If password doesn't meet requirements
     #[staticmethod]
     #[pyo3(signature = (password, min_strength="medium", max_length=128, custom_blacklist=None))]
     fn validate(
@@ -389,9 +353,6 @@ impl PasswordValidator {
     }
 
     /// Determine the strength level of a password
-    /// 
-    /// Returns:
-    ///     'strong', 'medium', 'weak', or 'invalid'
     #[staticmethod]
     fn get_strength(password: &str) -> String {
         for strength in &["strong", "medium", "weak"] {
@@ -409,21 +370,21 @@ impl PasswordValidator {
 
 /// Custom validation error that can hold multiple errors
 #[pyclass]
-#[derive(Clone)]
 pub struct ValidationError {
-    errors_list: Vec<PyObject>,
+    errors_list: Vec<Py<pyo3::types::PyDict>>,
 }
 
 #[pymethods]
 impl ValidationError {
     #[new]
-    fn new(errors: Vec<PyObject>) -> Self {
-        ValidationError { errors_list: errors }
+    fn new(py: Python, errors: Vec<Bound<'_, pyo3::types::PyDict>>) -> Self {
+        let errors_list = errors.into_iter().map(|d| d.unbind()).collect();
+        ValidationError { errors_list }
     }
 
     /// Get the list of validation errors
-    fn errors(&self, py: Python) -> Vec<PyObject> {
-        self.errors_list.clone()
+    fn errors(&self, py: Python) -> Vec<Py<pyo3::types::PyDict>> {
+        self.errors_list.iter().map(|d| d.clone_ref(py)).collect()
     }
 
     fn __str__(&self) -> String {
@@ -436,15 +397,12 @@ impl ValidationError {
 }
 
 // ============================================================================
-// Field Descriptor
+// Field Descriptor (simplified - most logic in Python)
 // ============================================================================
 
 /// Field descriptor for validation rules
 #[pyclass]
-#[derive(Clone)]
 pub struct Field {
-    #[pyo3(get)]
-    pub field_type: PyObject,
     #[pyo3(get)]
     pub required: bool,
     #[pyo3(get)]
@@ -473,14 +431,6 @@ pub struct Field {
     pub password_strength: String,
     #[pyo3(get)]
     pub password_blacklist: Option<Vec<String>>,
-    #[pyo3(get)]
-    pub choices: Option<PyObject>,
-    #[pyo3(get)]
-    pub enum_type: Option<PyObject>,
-    #[pyo3(get)]
-    pub default: Option<PyObject>,
-    #[pyo3(get)]
-    pub default_factory: Option<PyObject>,
     
     // Compiled regex (not exposed to Python)
     compiled_pattern: Option<Regex>,
@@ -490,7 +440,6 @@ pub struct Field {
 impl Field {
     #[new]
     #[pyo3(signature = (
-        field_type,
         required=true,
         no_empty=false,
         min_value=None,
@@ -504,14 +453,9 @@ impl Field {
         pattern_message=None,
         password=false,
         password_strength="medium",
-        password_blacklist=None,
-        choices=None,
-        enum_type=None,
-        default=None,
-        default_factory=None
+        password_blacklist=None
     ))]
     fn new(
-        field_type: PyObject,
         required: bool,
         no_empty: bool,
         min_value: Option<f64>,
@@ -526,16 +470,7 @@ impl Field {
         password: bool,
         password_strength: &str,
         password_blacklist: Option<Vec<String>>,
-        choices: Option<PyObject>,
-        enum_type: Option<PyObject>,
-        default: Option<PyObject>,
-        default_factory: Option<PyObject>,
     ) -> PyResult<Self> {
-        // Validate that both default and default_factory are not set
-        if default.is_some() && default_factory.is_some() {
-            return Err(PyValueError::new_err("Cannot specify both 'default' and 'default_factory'"));
-        }
-
         // Compile regex pattern if provided
         let compiled_pattern = if let Some(ref p) = pattern {
             Some(Regex::new(p).map_err(|e| PyValueError::new_err(format!("Invalid regex pattern: {}", e)))?)
@@ -544,7 +479,6 @@ impl Field {
         };
 
         Ok(Field {
-            field_type,
             required,
             no_empty,
             min_value,
@@ -559,40 +493,18 @@ impl Field {
             password,
             password_strength: password_strength.to_string(),
             password_blacklist,
-            choices,
-            enum_type,
-            default,
-            default_factory,
             compiled_pattern,
         })
     }
 
-    /// Check if field has a default value
-    fn has_default(&self) -> bool {
-        self.default.is_some() || self.default_factory.is_some()
-    }
-
-    /// Get the default value for this field
-    fn get_default(&self, py: Python) -> PyResult<PyObject> {
-        if let Some(ref factory) = self.default_factory {
-            // Call the factory function
-            factory.call0(py)
-        } else if let Some(ref default) = self.default {
-            Ok(default.clone_ref(py))
-        } else {
-            Err(PyValueError::new_err("No default value available"))
-        }
-    }
-}
-
-impl Field {
-    /// Validate a string against the compiled pattern (internal use)
-    pub fn matches_pattern(&self, value: &str) -> bool {
+    /// Validate a string value against the pattern
+    fn validate_pattern(&self, value: &str) -> PyResult<bool> {
         if let Some(ref pattern) = self.compiled_pattern {
-            pattern.is_match(value)
-        } else {
-            true
+            if !pattern.is_match(value) {
+                return Err(PyValueError::new_err(self.pattern_message.clone()));
+            }
         }
+        Ok(true)
     }
 }
 
@@ -600,64 +512,21 @@ impl Field {
 // Core Validation Functions
 // ============================================================================
 
-/// Validate a string value with all applicable rules
+/// Validate a string value
 #[pyfunction]
-#[pyo3(signature = (value, field, field_name))]
-fn validate_string(py: Python, value: &str, field: &Field, field_name: &str) -> PyResult<String> {
-    let mut result = value.to_string();
-
-    // Password validation
-    if field.password {
-        result = PasswordValidator::validate(
-            &result,
-            &field.password_strength,
-            field.max_length.unwrap_or(128),
-            field.password_blacklist.clone(),
-        )?;
-        return Ok(result);
+#[pyo3(signature = (value, sanitize=true, strict=true))]
+fn sanitize_string(value: &str, sanitize: bool, strict: bool) -> PyResult<String> {
+    if sanitize {
+        StringSanitizer::sanitize(value, strict)
+    } else {
+        Ok(value.to_string())
     }
-
-    // Email validation
-    if field.email {
-        result = EmailValidator::validate(
-            &result,
-            field.allow_disposable_email,
-            field.max_length.unwrap_or(254),
-        )?;
-        return Ok(result);
-    }
-
-    // Sanitization (for non-email, non-password fields)
-    if field.sanitize {
-        result = StringSanitizer::sanitize(&result, field.strict_sanitize)?;
-    }
-
-    // Pattern validation
-    if !field.matches_pattern(&result) {
-        return Err(PyValueError::new_err(&field.pattern_message));
-    }
-
-    // Length validation
-    if let Some(max_len) = field.max_length {
-        if result.len() > max_len {
-            return Err(PyValueError::new_err(format!(
-                "String length must be at most {}", max_len
-            )));
-        }
-    }
-
-    // No empty validation
-    if field.no_empty && result.trim().is_empty() {
-        return Err(PyValueError::new_err("String cannot be empty"));
-    }
-
-    Ok(result)
 }
 
 /// Validate a numeric value
 #[pyfunction]
-fn validate_number(value: f64, field: &Field, field_name: &str) -> PyResult<f64> {
-    if let Some(min_val) = field.min_value {
+fn validate_number(value: f64, min_value: Option<f64>, max_value: Option<f64>) -> PyResult<f64> {
+    if let Some(min_val) = min_value {
         if value < min_val {
             return Err(PyValueError::new_err(format!(
                 "Value must be at least {}", min_val
@@ -665,7 +534,7 @@ fn validate_number(value: f64, field: &Field, field_name: &str) -> PyResult<f64>
         }
     }
 
-    if let Some(max_val) = field.max_value {
+    if let Some(max_val) = max_value {
         if value > max_val {
             return Err(PyValueError::new_err(format!(
                 "Value must be at most {}", max_val
@@ -678,18 +547,16 @@ fn validate_number(value: f64, field: &Field, field_name: &str) -> PyResult<f64>
 
 /// Check if a value is in the allowed choices
 #[pyfunction]
-fn validate_choices(py: Python, value: PyObject, choices: &PyObject, field_name: &str) -> PyResult<bool> {
-    let choices_list = choices.downcast_bound::<PyList>(py)?;
-    
-    for choice in choices_list.iter() {
-        if value.bind(py).eq(&choice)? {
+fn validate_choices(py: Python, value: Bound<'_, pyo3::PyAny>, choices: Bound<'_, PyList>) -> PyResult<bool> {
+    for choice in choices.iter() {
+        if value.eq(&choice)? {
             return Ok(true);
         }
     }
     
-    let choices_repr: Vec<String> = choices_list
+    let choices_repr: Vec<String> = choices
         .iter()
-        .map(|c| c.repr().map(|r| r.to_string()).unwrap_or_default())
+        .filter_map(|c| c.repr().ok().map(|r| r.to_string()))
         .collect();
     
     Err(PyValueError::new_err(format!(
@@ -709,7 +576,7 @@ fn _secval(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PasswordValidator>()?;
     m.add_class::<ValidationError>()?;
     m.add_class::<Field>()?;
-    m.add_function(wrap_pyfunction!(validate_string, m)?)?;
+    m.add_function(wrap_pyfunction!(sanitize_string, m)?)?;
     m.add_function(wrap_pyfunction!(validate_number, m)?)?;
     m.add_function(wrap_pyfunction!(validate_choices, m)?)?;
     Ok(())
