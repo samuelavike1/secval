@@ -377,7 +377,7 @@ pub struct ValidationError {
 #[pymethods]
 impl ValidationError {
     #[new]
-    fn new(py: Python, errors: Vec<Bound<'_, pyo3::types::PyDict>>) -> Self {
+    fn new(_py: Python, errors: Vec<Bound<'_, pyo3::types::PyDict>>) -> Self {
         let errors_list = errors.into_iter().map(|d| d.unbind()).collect();
         ValidationError { errors_list }
     }
@@ -525,6 +525,7 @@ fn sanitize_string(value: &str, sanitize: bool, strict: bool) -> PyResult<String
 
 /// Validate a numeric value
 #[pyfunction]
+#[pyo3(signature = (value, min_value=None, max_value=None))]
 fn validate_number(value: f64, min_value: Option<f64>, max_value: Option<f64>) -> PyResult<f64> {
     if let Some(min_val) = min_value {
         if value < min_val {
@@ -547,7 +548,7 @@ fn validate_number(value: f64, min_value: Option<f64>, max_value: Option<f64>) -
 
 /// Check if a value is in the allowed choices
 #[pyfunction]
-fn validate_choices(py: Python, value: Bound<'_, pyo3::PyAny>, choices: Bound<'_, PyList>) -> PyResult<bool> {
+fn validate_choices(_py: Python, value: Bound<'_, pyo3::PyAny>, choices: Bound<'_, PyList>) -> PyResult<bool> {
     for choice in choices.iter() {
         if value.eq(&choice)? {
             return Ok(true);

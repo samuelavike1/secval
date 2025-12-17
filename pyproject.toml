@@ -28,7 +28,7 @@ classifiers = [
     "Topic :: Security",
     "Typing :: Typed",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.8,<3.14"
 
 [project.urls]
 Homepage = "https://github.com/samuelavike1/secval"
