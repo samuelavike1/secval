@@ -14,11 +14,9 @@ from secval._secval import (
     StringSanitizer,
     EmailValidator,
     PasswordValidator,
-    ValidationError as RustValidationError,
-    Field as RustField,
-    validate_string,
-    validate_number,
-    validate_choices,
+    # Note: ValidationError and Field are implemented in Python for flexibility
+    # The Rust module provides: sanitize_string, validate_number, validate_choices
+    # but we use the class methods directly for cleaner API
 )
 
 from typing import Any, Dict, List, Optional, Type, get_origin, get_args, Union, Callable, Pattern
