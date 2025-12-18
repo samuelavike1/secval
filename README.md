@@ -16,35 +16,8 @@ A **high-performance**, **security-focused** Python validation library written i
 - 📦 **Choices & Enums** - Restrict values to allowed options
 - 🪆 **Nested validators** - Compose complex data structures
 - 🎯 **Default values** - Static defaults and factory functions
-- 🔧 **pip installable** - Standard Python package installation
 
-## Installation
 
-### From PyPI (when published)
-
-```bash
-pip install secval
-```
-
-### From Source (Development)
-
-```bash
-# Prerequisites: Rust toolchain
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-
-# Clone and install
-git clone https://github.com/samuelavike1/secval.git
-cd secval
-pip install maturin
-maturin develop
-```
-
-### Build Wheel
-
-```bash
-maturin build --release
-pip install target/wheels/secval-*.whl
-```
 
 ## Quick Start
 
@@ -410,13 +383,7 @@ SecVal is powered by Rust, providing:
 - **Compiled regex patterns** cached at startup
 - **Minimal memory allocations**
 
-Benchmark (validating 10,000 user registrations):
 
-| Library | Time |
-|---------|------|
-| SecVal (Rust) | ~50ms |
-| Pydantic v2 | ~150ms |
-| Pure Python | ~500ms |
 
 ---
 

@@ -224,7 +224,12 @@ def test_password_validator():
     
     # get_strength works
     test("get_strength strong", PasswordValidator.get_strength("MyStr0ng!Pass123") == "strong")
-    test("get_strength medium", PasswordValidator.get_strength("ValidPass1") == "medium")  # Not in common list
+    # For medium: needs 8+ chars, uppercase, lowercase, digit, but NO special char needed
+    medium_pass = "Xk9mNq2pL"  # 9 chars, has upper, lower, digit, definitely not common
+    actual = PasswordValidator.get_strength(medium_pass)
+    test("get_strength medium", actual == "medium")
+    if actual != "medium":
+        print(f"    DEBUG: '{medium_pass}' returned '{actual}' (expected 'medium')")
     test("get_strength weak", PasswordValidator.get_strength("simple") == "weak")
     test("get_strength invalid", PasswordValidator.get_strength("ab") == "invalid")
 

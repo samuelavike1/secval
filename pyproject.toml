@@ -9,7 +9,7 @@ description = "A high-performance, security-focused Python validation library wr
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
-    { name = "Samuel Avike", email = "samuelavike1@gmail.com" }
+    { name = "Samuel Avike", email = "samuelavike@gmail.com" }
 ]
 keywords = ["validation", "security", "sanitization", "pydantic-alternative", "rust"]
 classifiers = [
@@ -17,9 +17,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -28,7 +25,7 @@ classifiers = [
     "Topic :: Security",
     "Typing :: Typed",
 ]
-requires-python = ">=3.8,<3.14"
+requires-python = ">=3.11,<3.14"
 
 [project.urls]
 Homepage = "https://github.com/samuelavike1/secval"

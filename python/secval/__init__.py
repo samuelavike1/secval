@@ -19,7 +19,7 @@ from secval._secval import (
     # but we use the class methods directly for cleaner API
 )
 
-from typing import Any, Dict, List, Optional, Type, get_origin, get_args, Union, Callable, Pattern
+from typing import Any, Dict, List, Optional, Type, get_origin, get_args, Union, Callable, Pattern, dataclass_transform
 from enum import Enum
 import re
 
@@ -123,7 +123,7 @@ class Field:
             return self.default
         raise ValueError("No default value available")
 
-
+@dataclass_transform(kw_only_default=True, field_specifiers=(Field,))
 class ValidatorMeta(type):
     """Metaclass to collect field definitions"""
 
