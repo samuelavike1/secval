@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, Type, get_origin, get_args, Union,
 from enum import Enum
 import re
 
-__version__ = "0.1.1"
+__version__ = "0.1.2"
 __all__ = [
     "BaseValidator",
     "Field",
