@@ -2,7 +2,7 @@
 
 A **high-performance**, **security-focused** Python validation library written in **Rust** using PyO3.
 
-[![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org)
+[![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -16,8 +16,13 @@ A **high-performance**, **security-focused** Python validation library written i
 - 📦 **Choices & Enums** - Restrict values to allowed options
 - 🪆 **Nested validators** - Compose complex data structures
 - 🎯 **Default values** - Static defaults and factory functions
+- 🔍 **Type-safe** - Full type checker support with function overloads
 
+## Installation
 
+```bash
+pip install secval
+```
 
 ## Quick Start
 
@@ -25,9 +30,9 @@ A **high-performance**, **security-focused** Python validation library written i
 from secval import BaseValidator, Field, ValidationError
 
 class UserValidator(BaseValidator):
-    name: str = Field(str, no_empty=True, max_length=100)
-    email: str = Field(str, email=True)
-    age: int = Field(int, min_value=0, max_value=120)
+    name: str = Field(no_empty=True, max_length=100)
+    email: str = Field(email=True)
+    age: int = Field(min_value=0, max_value=120)
 
 try:
     user = UserValidator(
@@ -79,8 +84,8 @@ except ValidationError as e:
 from secval import BaseValidator, Field, ValidationError
 
 class ProductValidator(BaseValidator):
-    name: str = Field(str, no_empty=True)
-    price: float = Field(float, min_value=0.01)
+    name: str = Field(no_empty=True)
+    price: float = Field(min_value=0.01)
 
 def create_product(data: dict) -> dict:
     try:
@@ -116,38 +121,38 @@ result = create_product({"name": "", "price": -10})
 from typing import List, Dict, Optional, Any
 
 class DataValidator(BaseValidator):
-    text: str                    # String
+    text: str                    # String (required)
     count: int                   # Integer
     price: float                 # Float (accepts int too)
     active: bool                 # Boolean
     items: List[str]             # List of strings
     metadata: Dict[str, Any]     # Dictionary
-    maybe_text: Optional[str]    # Optional (can be None)
+    maybe_text: Optional[str] = Field(default=None)  # Optional
 ```
 
 ### String Constraints
 
 ```python
 class ProfileValidator(BaseValidator):
-    username: str = Field(str, max_length=30)
-    bio: str = Field(str, no_empty=True)
-    title: str = Field(str, max_length=100, no_empty=True)
+    username: str = Field(max_length=30)
+    bio: str = Field(no_empty=True)
+    title: str = Field(max_length=100, no_empty=True)
 ```
 
 ### Numeric Range
 
 ```python
 class ProductValidator(BaseValidator):
-    quantity: int = Field(int, min_value=0)
-    rating: float = Field(float, min_value=0.0, max_value=5.0)
+    quantity: int = Field(min_value=0)
+    rating: float = Field(min_value=0.0, max_value=5.0)
 ```
 
 ### Email Validation
 
 ```python
 class ContactValidator(BaseValidator):
-    email: str = Field(str, email=True)
-    work_email: str = Field(str, email=True, allow_disposable_email=False)
+    email: str = Field(email=True)
+    work_email: str = Field(email=True, allow_disposable_email=False)
 ```
 
 **Direct usage:**
@@ -166,17 +171,14 @@ is_valid = EmailValidator.is_valid("test@example.com")  # True
 ```python
 class FormValidator(BaseValidator):
     phone: str = Field(
-        str,
         pattern=r'^\+?1?\d{10}$',
         pattern_message="Invalid phone number"
     )
     username: str = Field(
-        str,
         pattern=r'^[a-zA-Z][a-zA-Z0-9_]{2,29}$',
         pattern_message="Username: 3-30 chars, start with letter"
     )
     postal_code: str = Field(
-        str,
         pattern=r'^\d{5}(-\d{4})?$',
         pattern_message="Invalid ZIP code"
     )
@@ -195,7 +197,6 @@ Three strength levels:
 ```python
 class RegistrationValidator(BaseValidator):
     password: str = Field(
-        str,
         password=True,
         password_strength='strong',
         password_blacklist={'companyname'}
@@ -215,11 +216,8 @@ is_valid = PasswordValidator.is_valid("weak", "strong")   # False
 
 ```python
 class OrderValidator(BaseValidator):
-    status: str = Field(
-        str,
-        choices=['pending', 'processing', 'shipped', 'delivered']
-    )
-    priority: int = Field(int, choices=[1, 2, 3, 4, 5])
+    status: str = Field(choices=['pending', 'processing', 'shipped', 'delivered'])
+    priority: int = Field(choices=[1, 2, 3, 4, 5])
 ```
 
 ### Enum Validation
@@ -233,7 +231,7 @@ class OrderStatus(Enum):
     DELIVERED = "delivered"
 
 class OrderValidator(BaseValidator):
-    status: str = Field(str, enum=OrderStatus)
+    status: str = Field(enum=OrderStatus)
 
 # Accepts both value and name
 order = OrderValidator(status="pending")   # or status="PENDING"
@@ -244,15 +242,17 @@ print(order.dict())        # {"status": "pending"}
 ### Nested Validators
 
 ```python
+from typing import Optional, Any
+
 class AddressValidator(BaseValidator):
-    street: str = Field(str, max_length=200)
-    city: str = Field(str, max_length=100)
-    postal_code: str = Field(str, pattern=r'^\d{5}$')
+    street: str = Field(max_length=200)
+    city: str = Field(max_length=100)
+    postal_code: str = Field(pattern=r'^\d{5}$')
 
 class UserValidator(BaseValidator):
-    name: str = Field(str)
-    address: AddressValidator = Field(AddressValidator)
-    billing: AddressValidator = Field(AddressValidator, required=False)
+    name: str
+    address: AddressValidator | dict[str, Any]  # Pass dict, gets validated
+    billing: Optional[AddressValidator | dict[str, Any]] = Field(default=None)
 
 user = UserValidator(
     name="John",
@@ -274,8 +274,8 @@ Nested errors include full path:
 
 ```python
 class UserValidator(BaseValidator):
-    role: str = Field(str, default='user')
-    is_active: bool = Field(bool, default=True)
+    role: str = Field(default='user')
+    is_active: bool = Field(default=True)
 ```
 
 **Dynamic defaults:**
@@ -284,8 +284,8 @@ class UserValidator(BaseValidator):
 from datetime import datetime
 
 class DocumentValidator(BaseValidator):
-    created_at: str = Field(str, default_factory=lambda: datetime.now().isoformat())
-    tags: List[str] = Field(List[str], default_factory=list)
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+    tags: List[str] = Field(default_factory=list)
 ```
 
 ---
@@ -335,7 +335,6 @@ print(result)  # "bold"
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `field_type` | `Type` | **required** | Expected type |
 | `required` | `bool` | `True` | Field is required |
 | `no_empty` | `bool` | `False` | Reject empty strings |
 | `min_value` | `float` | `None` | Minimum for numbers |
@@ -352,8 +351,10 @@ print(result)  # "bold"
 | `password_blacklist` | `set` | `None` | Blocked passwords |
 | `choices` | `List` | `None` | Allowed values |
 | `enum` | `Enum` | `None` | Enum class |
-| `default` | `Any` | `...` | Default value |
+| `default` | `Any` | - | Default value |
 | `default_factory` | `Callable` | `None` | Default generator |
+
+> **Note:** Field type is inferred from the annotation - no need to pass it explicitly.
 
 ### Utility Classes
 
@@ -383,15 +384,13 @@ SecVal is powered by Rust, providing:
 - **Compiled regex patterns** cached at startup
 - **Minimal memory allocations**
 
-
-
 ---
 
 ## Development
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.11+
 - Rust 1.70+
 - maturin
 

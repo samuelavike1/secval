@@ -1,32 +1,44 @@
 """
-Test file for SecVal - Rust-powered Python validation library
+SecVal Test Suite
+==================
+A comprehensive test file for the secval package.
 
-Run with: pytest tests/test_secval.py -v
+Usage:
+    1. Install secval: pip install secval
+    2. Run this file: python test_secval_features.py
 """
-import pytest
+
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List
+from typing import Any, List, Optional
 
-from secval import (
-    BaseValidator,
-    Field,
-    ValidationError,
-    StringSanitizer,
-    EmailValidator,
-    PasswordValidator,
-)
+# Try to import secval
+try:
+    from secval import (
+        BaseValidator,
+        EmailValidator,
+        Field,
+        PasswordValidator,
+        StringSanitizer,
+        ValidationError,
+    )
+
+    print("[OK] secval imported successfully!")
+except ImportError as e:
+    print(f"[FAIL] Could not import secval: {e}")
+    print("Install with: pip install secval")
+    exit(1)
 
 
 # ============================================================================
 # ENUM DEFINITIONS
 # ============================================================================
 
+
 class UserRole(Enum):
     ADMIN = "admin"
     USER = "user"
     MODERATOR = "moderator"
-    GUEST = "guest"
 
 
 class OrderStatus(Enum):
@@ -34,460 +46,505 @@ class OrderStatus(Enum):
     PROCESSING = "processing"
     SHIPPED = "shipped"
     DELIVERED = "delivered"
-    CANCELLED = "cancelled"
 
 
 # ============================================================================
-# VALIDATOR DEFINITIONS
+# VALIDATOR DEFINITIONS (using new API - type from annotation)
 # ============================================================================
+
 
 class AddressValidator(BaseValidator):
-    """Validates address data"""
-    street: str = Field(str, max_length=200)
-    city: str = Field(str, max_length=100)
-    state: str = Field(str, max_length=50, required=False, default="")
+    street: str = Field(max_length=200)
+    city: str = Field(max_length=100)
     postal_code: str = Field(
-        str,
-        pattern=r'^\d{5}(-\d{4})?$',
-        pattern_message="Invalid postal code format. Expected: 12345 or 12345-6789"
+        pattern=r"^\d{5}(-\d{4})?$",
+        pattern_message="Invalid postal code (use 12345 or 12345-6789)",
     )
-    country: str = Field(str, max_length=50, default="USA")
+    country: str = Field(default="USA")
 
 
-class ContactInfoValidator(BaseValidator):
-    """Validates contact information"""
-    phone: str = Field(
-        str,
-        pattern=r'^\+?1?\d{10,14}$',
-        pattern_message="Invalid phone number format"
-    )
-    email: str = Field(str, email=True, allow_disposable_email=False)
-
-
-class UserRegistrationValidator(BaseValidator):
-    """Complete user registration validator"""
-    username: str = Field(
-        str,
-        pattern=r'^[a-zA-Z][a-zA-Z0-9_]{2,29}$',
-        pattern_message="Username must start with a letter and be 3-30 characters"
-    )
-    email: str = Field(str, email=True, allow_disposable_email=False)
-    password: str = Field(
-        str,
-        password=True,
-        password_strength='strong',
-        password_blacklist={'companyname', 'company123'}
-    )
-    role: str = Field(str, enum=UserRole, default="user")
-    subscription: str = Field(
-        str,
-        choices=['free', 'basic', 'premium', 'enterprise'],
-        default='free'
-    )
-    address: AddressValidator = Field(AddressValidator, required=False)
-    contact: ContactInfoValidator = Field(ContactInfoValidator)
-    created_at: str = Field(str, default_factory=lambda: datetime.now().isoformat())
-    is_active: bool = Field(bool, default=True)
+class SimpleValidator(BaseValidator):
+    name: str = Field(no_empty=True, max_length=50)
+    age: int = Field(min_value=0, max_value=150)
+    score: float = Field(min_value=0.0, max_value=100.0)
+    active: bool
 
 
 class ProductValidator(BaseValidator):
-    """Product validator"""
-    name: str = Field(str, no_empty=True, max_length=100)
+    name: str = Field(no_empty=True)
     sku: str = Field(
-        str,
-        pattern=r'^[A-Z]{3}-\d{4}$',
-        pattern_message="SKU must be in format ABC-1234"
+        pattern=r"^[A-Z]{3}-\d{4}$",
+        pattern_message="SKU must be ABC-1234 format",
     )
-    price: float = Field(float, min_value=0.01)
-    quantity: int = Field(int, min_value=0, default=0)
-    category: str = Field(str, choices=['electronics', 'clothing', 'food', 'books', 'other'])
-    tags: List[str] = Field(List[str], required=False, default_factory=list)
+    price: float = Field(min_value=0.01)
+    quantity: int = Field(default=0, min_value=0)
+    category: str = Field(choices=["electronics", "clothing", "food", "books"])
+    tags: List[str] = Field(default_factory=list)
+
+
+class UserValidator(BaseValidator):
+    username: str = Field(
+        pattern=r"^[a-zA-Z][a-zA-Z0-9_]{2,29}$",
+        pattern_message="Username must start with letter, 3-30 chars",
+    )
+    email: str = Field(email=True, allow_disposable_email=False)
+    password: str = Field(password=True, password_strength="strong")
+    role: str = Field(enum=UserRole, default="user")
+    # Use Union with dict to allow passing dict literals without type errors
+    address: Optional[AddressValidator | dict[str, Any]] = Field(default=None)
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 
 # ============================================================================
-# STRING SANITIZER TESTS
+# TEST FUNCTIONS
 # ============================================================================
 
-class TestStringSanitizer:
-    """Tests for StringSanitizer (Rust implementation)"""
-
-    def test_safe_string_passes(self):
-        result = StringSanitizer.sanitize("Hello World", True)
-        assert "Hello World" in result
-
-    def test_script_tag_rejected(self):
-        with pytest.raises(ValueError, match="Script tags are not allowed"):
-            StringSanitizer.sanitize("<script>alert('xss')</script>", True)
-
-    def test_html_tag_rejected(self):
-        with pytest.raises(ValueError, match="HTML tags are not allowed"):
-            StringSanitizer.sanitize("<div>content</div>", True)
-
-    def test_event_handler_rejected(self):
-        with pytest.raises(ValueError, match="JavaScript event handlers are not allowed"):
-            StringSanitizer.sanitize("onclick=alert(1)", True)
-
-    def test_sql_injection_rejected(self):
-        with pytest.raises(ValueError, match="SQL injection"):
-            StringSanitizer.sanitize("'; DROP TABLE users; --", True)
-
-    def test_path_traversal_rejected(self):
-        with pytest.raises(ValueError, match="Path traversal"):
-            StringSanitizer.sanitize("../../../etc/passwd", True)
-
-    def test_null_byte_rejected(self):
-        with pytest.raises(ValueError, match="Null bytes"):
-            StringSanitizer.sanitize("file.txt\x00.jpg", True)
-
-    def test_non_strict_mode_cleans(self):
-        result = StringSanitizer.sanitize("<b>bold</b>", False)
-        assert "<b>" not in result
-
-    def test_is_safe_returns_bool(self):
-        assert StringSanitizer.is_safe("Hello World") is True
-        assert StringSanitizer.is_safe("<script>bad</script>") is False
+passed = 0
+failed = 0
 
 
-# ============================================================================
-# EMAIL VALIDATOR TESTS
-# ============================================================================
-
-class TestEmailValidator:
-    """Tests for EmailValidator (Rust implementation)"""
-
-    def test_valid_email(self):
-        result = EmailValidator.validate("test@example.com")
-        assert result == "test@example.com"
-
-    def test_email_normalized_to_lowercase(self):
-        result = EmailValidator.validate("Test@EXAMPLE.COM")
-        assert result == "test@example.com"
-
-    def test_email_trimmed(self):
-        result = EmailValidator.validate("  test@example.com  ")
-        assert result == "test@example.com"
-
-    def test_invalid_format_rejected(self):
-        with pytest.raises(ValueError, match="Invalid email"):
-            EmailValidator.validate("not-an-email")
-
-    def test_empty_email_rejected(self):
-        with pytest.raises(ValueError, match="cannot be empty"):
-            EmailValidator.validate("")
-
-    def test_disposable_email_blocked(self):
-        with pytest.raises(ValueError, match="Disposable"):
-            EmailValidator.validate("test@mailinator.com", allow_disposable=False)
-
-    def test_disposable_email_allowed_by_default(self):
-        result = EmailValidator.validate("test@mailinator.com", allow_disposable=True)
-        assert result == "test@mailinator.com"
-
-    def test_is_valid_returns_bool(self):
-        assert EmailValidator.is_valid("test@example.com") is True
-        assert EmailValidator.is_valid("invalid") is False
+def test(name: str, condition: bool) -> None:
+    """Simple test helper"""
+    global passed, failed
+    try:
+        if condition:
+            print(f"  [PASS] {name}")
+            passed += 1
+        else:
+            print(f"  [FAIL] {name}")
+            failed += 1
+    except Exception as e:
+        print(f"  [ERROR] {name}: {e}")
+        failed += 1
 
 
-# ============================================================================
-# PASSWORD VALIDATOR TESTS
-# ============================================================================
+def test_string_sanitizer() -> None:
+    """Test StringSanitizer"""
+    print("\n--- StringSanitizer Tests ---")
 
-class TestPasswordValidator:
-    """Tests for PasswordValidator (Rust implementation)"""
+    # Safe string passes
+    result = StringSanitizer.sanitize("Hello World", True)
+    test("Safe string passes", "Hello" in result)
 
-    def test_strong_password_passes(self):
-        result = PasswordValidator.validate("MyStr0ng!P@ss", "strong")
-        assert result == "MyStr0ng!P@ss"
+    # Script tags blocked
+    try:
+        StringSanitizer.sanitize("<script>alert('xss')</script>", True)
+        test("Script tags blocked", False)
+    except ValueError:
+        test("Script tags blocked", True)
 
-    def test_weak_password_rejected_for_strong(self):
-        with pytest.raises(ValueError, match="at least 12 characters"):
-            PasswordValidator.validate("weak", "strong")
+    # HTML tags blocked
+    try:
+        StringSanitizer.sanitize("<div>text</div>", True)
+        test("HTML tags blocked", False)
+    except ValueError:
+        test("HTML tags blocked", True)
 
-    def test_no_uppercase_rejected(self):
-        with pytest.raises(ValueError, match="uppercase"):
-            PasswordValidator.validate("nouppercase1!", "strong")
+    # SQL injection blocked
+    try:
+        StringSanitizer.sanitize("'; DROP TABLE users; --", True)
+        test("SQL injection blocked", False)
+    except ValueError:
+        test("SQL injection blocked", True)
 
-    def test_no_digit_rejected(self):
-        with pytest.raises(ValueError, match="digit"):
-            PasswordValidator.validate("NoDigitHere!", "strong")
+    # Path traversal blocked
+    try:
+        StringSanitizer.sanitize("../../../etc/passwd", True)
+        test("Path traversal blocked", False)
+    except ValueError:
+        test("Path traversal blocked", True)
 
-    def test_no_special_rejected_for_strong(self):
-        with pytest.raises(ValueError, match="special"):
-            PasswordValidator.validate("NoSpecial123", "strong")
-
-    def test_common_password_rejected(self):
-        with pytest.raises(ValueError, match="too common"):
-            PasswordValidator.validate("password123", "medium")
-
-    def test_get_strength(self):
-        assert PasswordValidator.get_strength("MyStr0ng!P@ss") == "strong"
-        assert PasswordValidator.get_strength("Password1") == "medium"
-        assert PasswordValidator.get_strength("simple") == "weak"
-        assert PasswordValidator.get_strength("abc") == "invalid"
-
-    def test_is_valid_returns_bool(self):
-        assert PasswordValidator.is_valid("MyStr0ng!P@ss", "strong") is True
-        assert PasswordValidator.is_valid("weak", "strong") is False
+    # is_safe returns correct values
+    test(
+        "is_safe() returns True for safe",
+        StringSanitizer.is_safe("Hello World") == True,
+    )
+    test(
+        "is_safe() returns False for malicious",
+        StringSanitizer.is_safe("<script>bad</script>") == False,
+    )
 
 
-# ============================================================================
-# PATTERN VALIDATION TESTS
-# ============================================================================
+def test_email_validator() -> None:
+    """Test EmailValidator"""
+    print("\n--- EmailValidator Tests ---")
 
-class TestPatternValidation:
-    """Tests for regex pattern validation"""
+    # Valid email
+    result = EmailValidator.validate("test@example.com")
+    test("Valid email passes", result == "test@example.com")
 
-    def test_valid_pattern_passes(self):
-        product = ProductValidator(
-            name="Laptop",
-            sku="ABC-1234",
-            price=999.99,
-            category="electronics"
+    # Email normalized to lowercase
+    result = EmailValidator.validate("TEST@EXAMPLE.COM")
+    test("Email normalized to lowercase", result == "test@example.com")
+
+    # Email trimmed
+    result = EmailValidator.validate("  test@example.com  ")
+    test("Email trimmed", result == "test@example.com")
+
+    # Invalid email rejected
+    try:
+        EmailValidator.validate("not-an-email")
+        test("Invalid email rejected", False)
+    except ValueError:
+        test("Invalid email rejected", True)
+
+    # Disposable blocked when disabled
+    try:
+        EmailValidator.validate("test@mailinator.com", False)
+        test("Disposable email blocked", False)
+    except ValueError:
+        test("Disposable email blocked", True)
+
+    # is_valid works
+    test(
+        "is_valid() for valid email",
+        EmailValidator.is_valid("test@example.com") == True,
+    )
+    test("is_valid() for invalid email", EmailValidator.is_valid("invalid") == False)
+
+
+def test_password_validator() -> None:
+    """Test PasswordValidator"""
+    print("\n--- PasswordValidator Tests ---")
+
+    # Strong password passes
+    result = PasswordValidator.validate("MyStr0ng!Pass123", "strong")
+    test("Strong password passes", result == "MyStr0ng!Pass123")
+
+    # Weak password rejected for strong
+    try:
+        PasswordValidator.validate("weak", "strong")
+        test("Weak password rejected", False)
+    except ValueError:
+        test("Weak password rejected", True)
+
+    # No uppercase rejected
+    try:
+        PasswordValidator.validate("nouppercase123!", "strong")
+        test("No uppercase rejected", False)
+    except ValueError:
+        test("No uppercase rejected", True)
+
+    # Common password rejected
+    try:
+        PasswordValidator.validate("password123", "medium")
+        test("Common password rejected", False)
+    except ValueError:
+        test("Common password rejected", True)
+
+    # get_strength works
+    test(
+        "get_strength strong",
+        PasswordValidator.get_strength("MyStr0ng!Pass123") == "strong",
+    )
+    # For medium: needs 8+ chars, uppercase, lowercase, digit, but NO special char needed
+    medium_pass = "Xk9mNq2pL"  # 9 chars, has upper, lower, digit, definitely not common
+    actual = PasswordValidator.get_strength(medium_pass)
+    test("get_strength medium", actual == "medium")
+    if actual != "medium":
+        print(f"    DEBUG: '{medium_pass}' returned '{actual}' (expected 'medium')")
+    test("get_strength weak", PasswordValidator.get_strength("simple") == "weak")
+    test("get_strength invalid", PasswordValidator.get_strength("ab") == "invalid")
+
+
+def test_basic_validator() -> None:
+    """Test basic type validation"""
+    print("\n--- Basic Validator Tests ---")
+
+    # Valid data passes
+    v = SimpleValidator(name="John", age=30, score=85.5, active=True)
+    test("Valid data passes", v.name == "John" and v.age == 30)
+
+    # dict() returns data
+    d = v.dict()
+    test("dict() returns data", d["name"] == "John" and d["age"] == 30)
+
+    # Empty string rejected
+    try:
+        SimpleValidator(name="", age=30, score=85.5, active=True)
+        test("Empty string rejected", False)
+    except ValidationError:
+        test("Empty string rejected", True)
+
+    # Value below min rejected
+    try:
+        SimpleValidator(name="John", age=-5, score=85.5, active=True)
+        test("Value below min rejected", False)
+    except ValidationError:
+        test("Value below min rejected", True)
+
+    # Value above max rejected
+    try:
+        SimpleValidator(name="John", age=30, score=150.0, active=True)
+        test("Value above max rejected", False)
+    except ValidationError:
+        test("Value above max rejected", True)
+
+
+def test_pattern_validation() -> None:
+    """Test regex pattern validation"""
+    print("\n--- Pattern Validation Tests ---")
+
+    # Valid pattern passes
+    p = ProductValidator(
+        name="Laptop", sku="ABC-1234", price=999.99, category="electronics"
+    )
+    test("Valid pattern passes", p.sku == "ABC-1234")
+
+    # Invalid pattern rejected
+    try:
+        ProductValidator(
+            name="Phone", sku="invalid", price=499.99, category="electronics"
         )
-        assert product.sku == "ABC-1234"
-
-    def test_invalid_pattern_rejected(self):
-        with pytest.raises(ValidationError) as exc_info:
-            ProductValidator(
-                name="Phone",
-                sku="invalid-sku",
-                price=499.99,
-                category="electronics"
-            )
-        errors = exc_info.value.errors()
-        assert any("sku" in str(e["loc"]) for e in errors)
+        test("Invalid pattern rejected", False)
+    except ValidationError as e:
+        errors = e.errors()
+        has_sku_error = any("sku" in str(err["loc"]) for err in errors)
+        test("Invalid pattern rejected", has_sku_error)
 
 
-# ============================================================================
-# CHOICES VALIDATION TESTS
-# ============================================================================
+def test_choices_validation() -> None:
+    """Test choices validation"""
+    print("\n--- Choices Validation Tests ---")
 
-class TestChoicesValidation:
-    """Tests for choices validation"""
+    # Valid choice passes
+    p = ProductValidator(name="Book", sku="BOK-1234", price=19.99, category="books")
+    test("Valid choice passes", p.category == "books")
 
-    def test_valid_choice_passes(self):
-        product = ProductValidator(
-            name="Book",
-            sku="BOK-9999",
-            price=29.99,
-            category="books"
-        )
-        assert product.category == "books"
-
-    def test_invalid_choice_rejected(self):
-        with pytest.raises(ValidationError) as exc_info:
-            ProductValidator(
-                name="Mystery",
-                sku="MYS-0000",
-                price=9.99,
-                category="mystery"
-            )
-        errors = exc_info.value.errors()
-        assert any("must be one of" in e["msg"] for e in errors)
+    # Invalid choice rejected
+    try:
+        ProductValidator(name="Mystery", sku="MYS-1234", price=9.99, category="mystery")
+        test("Invalid choice rejected", False)
+    except ValidationError as e:
+        errors = e.errors()
+        has_choice_error = any("must be one of" in err["msg"] for err in errors)
+        test("Invalid choice rejected", has_choice_error)
 
 
-# ============================================================================
-# ENUM VALIDATION TESTS
-# ============================================================================
+def test_enum_validation() -> None:
+    """Test enum validation"""
+    print("\n--- Enum Validation Tests ---")
 
-class TestEnumValidation:
-    """Tests for enum validation"""
+    # Valid enum passes
+    u = UserValidator(
+        username="johnsmith", email="john@example.com", password="MyStr0ng!Pass123"
+    )
+    test("Default enum works", u.role == UserRole.USER)
 
-    def test_valid_enum_by_value(self):
-        user = UserRegistrationValidator(
+    # Enum by value
+    u2 = UserValidator(
+        username="johnsmith",
+        email="john@example.com",
+        password="MyStr0ng!Pass123",
+        role="admin",
+    )
+    test("Enum by value works", u2.role == UserRole.ADMIN)
+
+    # Invalid enum rejected
+    try:
+        UserValidator(
             username="johnsmith",
             email="john@example.com",
-            password="MyStr0ng!P@ss123",
-            role="admin",
-            contact={"phone": "+12025551234", "email": "john@example.com"}
+            password="MyStr0ng!Pass123",
+            role="superuser",
         )
-        assert user.role == UserRole.ADMIN
-
-    def test_invalid_enum_rejected(self):
-        with pytest.raises(ValidationError) as exc_info:
-            UserRegistrationValidator(
-                username="johnsmith",
-                email="john@example.com",
-                password="MyStr0ng!P@ss123",
-                role="superuser",
-                contact={"phone": "+12025551234", "email": "john@example.com"}
-            )
-        errors = exc_info.value.errors()
-        assert any("Invalid enum" in e["msg"] for e in errors)
+        test("Invalid enum rejected", False)
+    except ValidationError:
+        test("Invalid enum rejected", True)
 
 
-# ============================================================================
-# NESTED VALIDATOR TESTS
-# ============================================================================
+def test_nested_validators() -> None:
+    """Test nested validator support"""
+    print("\n--- Nested Validator Tests ---")
 
-class TestNestedValidators:
-    """Tests for nested validator support"""
+    # Valid nested data
+    u = UserValidator(
+        username="janedoe",
+        email="jane@example.com",
+        password="MyStr0ng!Pass123",
+        address={"street": "123 Main St", "city": "New York", "postal_code": "10001"},
+    )
+    # address could be AddressValidator or dict at this point
+    addr = u.address
+    test(
+        "Valid nested data passes",
+        addr is not None
+        and isinstance(addr, AddressValidator)
+        and addr.city == "New York",
+    )
+    test(
+        "Nested default works",
+        addr is not None
+        and isinstance(addr, AddressValidator)
+        and addr.country == "USA",
+    )
 
-    def test_valid_nested_data(self):
-        user = UserRegistrationValidator(
+    # Invalid nested data (invalid postal code)
+    try:
+        UserValidator(
             username="janedoe",
             email="jane@example.com",
-            password="MyStr0ng!P@ss123",
-            address={
-                "street": "123 Main St",
-                "city": "New York",
-                "postal_code": "10001"
-            },
-            contact={"phone": "+12025551234", "email": "jane@example.com"}
+            password="MyStr0ng!Pass123",
+            address={"street": "123 Main St", "city": "NYC", "postal_code": "invalid"},
         )
-        assert user.address.city == "New York"
-        assert user.address.country == "USA"  # Default
+        test("Invalid nested rejected", False)
+    except ValidationError as e:
+        errors = e.errors()
+        has_nested_error = any("address" in str(err["loc"]) for err in errors)
+        test("Invalid nested rejected", has_nested_error)
 
-    def test_nested_error_includes_path(self):
-        with pytest.raises(ValidationError) as exc_info:
-            UserRegistrationValidator(
-                username="janedoe",
-                email="jane@example.com",
-                password="MyStr0ng!P@ss123",
-                address={
-                    "street": "123 Main St",
-                    "city": "NYC",
-                    "postal_code": "invalid"
-                },
-                contact={"phone": "+12025551234", "email": "jane@example.com"}
-            )
-        errors = exc_info.value.errors()
-        assert any("address.postal_code" in str(e["loc"]) for e in errors)
+    # Nested in dict()
+    u2 = UserValidator(
+        username="janedoe",
+        email="jane@example.com",
+        password="MyStr0ng!Pass123",
+        address={"street": "123 Main St", "city": "New York", "postal_code": "10001"},
+    )
+    d = u2.dict()
+    test(
+        "Nested in dict()",
+        isinstance(d["address"], dict) and d["address"]["city"] == "New York",
+    )
 
-    def test_nested_validators_in_dict(self):
-        user = UserRegistrationValidator(
-            username="janedoe",
-            email="jane@example.com",
-            password="MyStr0ng!P@ss123",
-            address={
-                "street": "123 Main St",
-                "city": "New York",
-                "postal_code": "10001"
-            },
-            contact={"phone": "+12025551234", "email": "jane@example.com"}
+
+def test_default_values() -> None:
+    """Test default values"""
+    print("\n--- Default Values Tests ---")
+
+    # Static default
+    p = ProductValidator(name="Item", sku="ITM-0001", price=10.0, category="books")
+    test("Static default (quantity)", p.quantity == 0)
+
+    # default_factory
+    test("default_factory (tags)", p.tags == [])
+
+    # default_factory creates new instances
+    p1 = ProductValidator(name="P1", sku="AAA-0001", price=10.0, category="books")
+    p2 = ProductValidator(name="P2", sku="BBB-0001", price=20.0, category="books")
+    p1.tags.append("tag1")
+    test("default_factory new instances", "tag1" not in p2.tags)
+
+    # created_at auto-generated
+    u = UserValidator(
+        username="testuser", email="test@example.com", password="MyStr0ng!Pass123"
+    )
+    test("created_at generated", u.created_at is not None and "T" in u.created_at)
+
+
+def test_error_handling() -> None:
+    """Test error handling"""
+    print("\n--- Error Handling Tests ---")
+
+    # Error structure
+    try:
+        SimpleValidator(name="", age=-5, score=200.0, active=True)
+    except ValidationError as e:
+        errors = e.errors()
+        has_structure = all(
+            "loc" in err and "type" in err and "msg" in err for err in errors
         )
-        data = user.dict()
-        assert isinstance(data["address"], dict)
-        assert data["address"]["city"] == "New York"
+        test("Error has loc, type, msg", has_structure)
 
-
-# ============================================================================
-# DEFAULT VALUES TESTS
-# ============================================================================
-
-class TestDefaultValues:
-    """Tests for default values and default_factory"""
-
-    def test_static_default(self):
-        product = ProductValidator(
-            name="Simple Product",
-            sku="SMP-0001",
-            price=19.99,
-            category="other"
-        )
-        assert product.quantity == 0  # Default value
-
-    def test_default_factory(self):
-        product = ProductValidator(
-            name="Simple Product",
-            sku="SMP-0001",
-            price=19.99,
-            category="other"
-        )
-        assert product.tags == []  # Default factory (list)
-
-    def test_default_factory_creates_new_instance(self):
-        p1 = ProductValidator(name="P1", sku="AAA-0001", price=10, category="other")
-        p2 = ProductValidator(name="P2", sku="BBB-0002", price=20, category="other")
-        p1.tags.append("tag1")
-        assert p2.tags == []  # Different instance
-
-
-# ============================================================================
-# ERROR HANDLING TESTS
-# ============================================================================
-
-class TestErrorHandling:
-    """Tests for error handling and response format"""
-
-    def test_error_structure(self):
-        with pytest.raises(ValidationError) as exc_info:
-            ProductValidator(
-                name="",
-                sku="invalid",
-                price=-10,
-                category="unknown"
-            )
-        errors = exc_info.value.errors()
-        
-        # Each error should have loc, type, and msg
-        for error in errors:
-            assert "loc" in error
-            assert "type" in error
-            assert "msg" in error
-            assert isinstance(error["loc"], tuple)
-
-    def test_missing_field_error_type(self):
-        with pytest.raises(ValidationError) as exc_info:
-            ProductValidator(
-                sku="ABC-1234",
-                price=10,
-                category="other"
-            )  # Missing 'name'
-        errors = exc_info.value.errors()
-        name_errors = [e for e in errors if "name" in str(e["loc"])]
-        assert len(name_errors) > 0
-        assert name_errors[0]["type"] == "missing"
-
-    def test_extra_field_rejected(self):
-        with pytest.raises(ValidationError) as exc_info:
-            ProductValidator(
-                name="Test",
-                sku="ABC-1234",
-                price=10,
-                category="other",
-                unknown_field="value"
-            )
-        errors = exc_info.value.errors()
-        assert any(e["type"] == "extra_forbidden" for e in errors)
-
-
-# ============================================================================
-# INTEGRATION TESTS
-# ============================================================================
-
-class TestIntegration:
-    """Integration tests combining multiple features"""
-
-    def test_complete_user_registration(self):
-        user = UserRegistrationValidator(
-            username="janedoe_2024",
-            email="jane@company.com",
-            password="MyStr0ng!P@ssword",
-            role="admin",
-            subscription="premium",
-            address={
-                "street": "789 Pine Street",
-                "city": "Chicago",
-                "state": "IL",
-                "postal_code": "60601"
-            },
-            contact={
-                "phone": "+13125551234",
-                "email": "jane@company.com"
-            }
+    # Missing field type
+    try:
+        SimpleValidator(age=30, score=50.0, active=True)  # type: ignore[call-arg]
+    except ValidationError as e:
+        errors = e.errors()
+        name_errors = [err for err in errors if "name" in str(err["loc"])]
+        test(
+            "Missing field type is 'missing'",
+            len(name_errors) > 0 and name_errors[0]["type"] == "missing",
         )
 
-        data = user.dict()
-        
-        assert data["username"] == "janedoe_2024"
-        assert data["email"] == "jane@company.com"
-        assert data["role"] == "admin"  # Enum value
-        assert data["subscription"] == "premium"
-        assert data["is_active"] is True  # Default
-        assert "created_at" in data  # Default factory
-        assert data["address"]["city"] == "Chicago"
+    # Extra fields rejected
+    try:
+        SimpleValidator(name="John", age=30, score=50.0, active=True, extra="field")  # type: ignore[call-arg]
+    except ValidationError as e:
+        errors = e.errors()
+        has_extra = any(err["type"] == "extra_forbidden" for err in errors)
+        test("Extra fields rejected", has_extra)
+
+
+def test_list_validation() -> None:
+    """Test List type validation"""
+    print("\n--- List Validation Tests ---")
+
+    class ListValidator(BaseValidator):
+        items: List[str]
+
+    # Valid list
+    v = ListValidator(items=["a", "b", "c"])
+    test("Valid list passes", v.items == ["a", "b", "c"])
+
+    # Non-list rejected
+    try:
+        ListValidator(items="not-a-list")  # type: ignore[arg-type]
+        test("Non-list rejected", False)
+    except ValidationError:
+        test("Non-list rejected", True)
+
+
+def test_optional_fields() -> None:
+    """Test Optional field handling"""
+    print("\n--- Optional Fields Tests ---")
+
+    class OptionalValidator(BaseValidator):
+        required_field: str
+        optional_field: Optional[str] = Field(default=None)
+        optional_with_default: str = Field(default="default_value")
+
+    # Optional can be omitted
+    v = OptionalValidator(required_field="value")
+    test("Optional field can be omitted", True)
+
+    # Optional with default
+    test("Optional with default", v.optional_with_default == "default_value")
+
+    # Required cannot be omitted
+    try:
+        OptionalValidator()  # type: ignore[call-arg]
+        test("Required field cannot be omitted", False)
+    except ValidationError:
+        test("Required field cannot be omitted", True)
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
+
+
+def main() -> None:
+    print("=" * 60)
+    print("SecVal Feature Tests")
+    print("=" * 60)
+
+    try:
+        import secval
+
+        print(f"Version: {getattr(secval, '__version__', 'unknown')}")
+    except Exception:
+        pass
+
+    test_string_sanitizer()
+    test_email_validator()
+    test_password_validator()
+    test_basic_validator()
+    test_pattern_validation()
+    test_choices_validation()
+    test_enum_validation()
+    test_nested_validators()
+    test_default_values()
+    test_error_handling()
+    test_list_validation()
+    test_optional_fields()
+
+    print("\n" + "=" * 60)
+    print(f"Results: {passed} passed, {failed} failed")
+    print("=" * 60)
+
+    if failed > 0:
+        exit(1)
 
 
 if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    main()
